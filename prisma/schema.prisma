@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProjectType {
+  TRADING
+  POINTS
+  OTHER
+}
+
+model Project {
+  id         String      @id @default(cuid())
+  name       String
+  slug       String      @unique
+  type       ProjectType @default(TRADING)
+  color      String      @default("#6366f1")
+  logo_url   String?
+  api_key    String      @unique
+  active     Boolean     @default(true)
+  created_at DateTime    @default(now())
+  updated_at DateTime    @updatedAt
+
+  trades    Trade[]
+  snapshots Snapshot[]
+  events    Event[]
+
+  @@map("projects")
+}
+
+// Operação de trading enviada pelo bot
+model Trade {
+  id         String  @id @default(cuid())
+  project_id String
+  project    Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+
+  tx_type  String  // open, close, switch_open, switch_close, stop_loss, take_profit
+  side     String  // long, short
+  ticker   String
+  quantity Float
+  price    Float
+  notional Float
+  pnl      Float?
+  reason   String?
+
+  created_at DateTime @default(now())
+
+  @@index([project_id])
+  @@index([created_at])
+  @@map("trades")
+}
+
+// Snapshot periódico do estado do bot
+model Snapshot {
+  id         String  @id @default(cuid())
+  project_id String
+  project    Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+
+  state         String?
+  side          String?
+  ticker        String?
+  balance       Float?
+  pnl_pct       Float?
+  unrealized_pnl Float?
+  funding_rate  Float?
+  trend         String?
+  entry_price   Float?
+  current_price Float?
+
+  created_at DateTime @default(now())
+
+  @@index([project_id])
+  @@index([created_at])
+  @@map("snapshots")
+}
+
+// Evento manual: pontos, tasks, milestones (airdrops de points)
+model Event {
+  id         String  @id @default(cuid())
+  project_id String
+  project    Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+
+  title       String
+  description String?
+  value       Float?      // pontos, XP, etc.
+  event_type  String      @default("note") // task | milestone | points | note
+
+  created_at DateTime @default(now())
+
+  @@index([project_id])
+  @@map("events")
+}
