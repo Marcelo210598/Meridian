@@ -33,8 +33,14 @@
 - `DATABASE_URL` → Neon PostgreSQL connection string
 - Cada projeto tem uma `api_key` única gerada no momento da criação
 - Bot envia dados via `POST /api/ingest` com header `X-Api-Key: <key>`
+- **URL produção:** https://meridian-ai.up.railway.app
+
+## 🔑 API Keys dos projetos
+| Projeto | ID | API Key |
+|---------|-----|---------|
+| Ethereal | cmltn7vtn0000ydlea6wmdgj7 | `10efeab0-de53-4246-a937-8bdcb9ae42c2` |
 
 ## 📚 Dependências principais
-- next: 15.1.0
+- next: ^15.5.12
 - @prisma/client: ^5.22.0
 - tailwindcss: ^3.4.17
