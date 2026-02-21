@@ -1,5 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
+import {
+  fetchEtherealPoints,
+  fetchEtherealFills,
+  fetchEtherealPosition,
+} from "@/lib/ethereal-api";
+import EtherealConfig from "@/components/EtherealConfig";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +27,23 @@ export default async function ProjectDetailPage({
   });
 
   if (!project) notFound();
+
+  // Busca dados da Ethereal API (apenas se o projeto tiver wallet configurada)
+  const hasEtherealConfig = !!(project.wallet_address || project.subaccount_id);
+
+  const [etherealPoints, etherealFills, etherealPosition] = hasEtherealConfig
+    ? await Promise.all([
+        project.wallet_address
+          ? fetchEtherealPoints(project.wallet_address)
+          : null,
+        project.subaccount_id
+          ? fetchEtherealFills(project.subaccount_id)
+          : [],
+        project.subaccount_id
+          ? fetchEtherealPosition(project.subaccount_id)
+          : null,
+      ])
+    : [null, [], null];
 
   const closedTrades = project.trades.filter((t) => t.pnl !== null);
   const totalPnl = closedTrades.reduce((sum, t) => sum + (t.pnl ?? 0), 0);
@@ -54,265 +77,436 @@ export default async function ProjectDetailPage({
         </div>
       </div>
 
-      {/* Stats principais */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-          <p className="text-white/40 text-xs mb-1">PnL Total</p>
-          <p
-            className={`text-xl font-bold ${
-              totalPnl >= 0 ? "text-green-400" : "text-red-400"
-            }`}
-          >
-            {totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(2)}
-          </p>
-        </div>
-        <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-          <p className="text-white/40 text-xs mb-1">Saldo atual</p>
-          <p className="text-xl font-bold">
-            {latestSnapshot?.balance
-              ? `$${latestSnapshot.balance.toFixed(2)}`
-              : "—"}
-          </p>
-        </div>
-        <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-          <p className="text-white/40 text-xs mb-1">Win Rate</p>
-          <p
-            className={`text-xl font-bold ${
-              winRate >= 60
-                ? "text-green-400"
-                : winRate >= 40
-                ? "text-yellow-400"
-                : "text-red-400"
-            }`}
-          >
-            {closedTrades.length > 0 ? `${winRate.toFixed(0)}%` : "—"}
-          </p>
-        </div>
-        <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-          <p className="text-white/40 text-xs mb-1">Total Trades</p>
-          <p className="text-xl font-bold">{project._count.trades}</p>
-        </div>
-      </div>
+      {/* Botão de configuração Ethereal (sempre visível) */}
+      <EtherealConfig
+        projectId={project.id}
+        walletAddress={project.wallet_address ?? null}
+        subaccountId={project.subaccount_id ?? null}
+      />
 
-      {/* Último snapshot (trading) */}
-      {latestSnapshot && project.type === "TRADING" && (
-        <div className="mb-8 p-4 bg-white/5 border border-white/10 rounded-xl">
-          <p className="text-white/40 text-xs mb-3 uppercase tracking-wider font-medium">
-            Último snapshot do bot
-          </p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div>
-              <span className="text-white/40">Estado: </span>
-              <span className="font-medium">{latestSnapshot.state ?? "—"}</span>
+      {/* ===== SEÇÃO ETHEREAL API (se configurada) ===== */}
+      {hasEtherealConfig && (
+        <div className="mb-8">
+          <h2 className="font-semibold mb-4 text-sm uppercase tracking-wider text-white/60">
+            Airdrop Ethereal — Dados em Tempo Real
+          </h2>
+
+          {/* Points + Rank */}
+          {etherealPoints ? (
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-4">
+                <p className="text-white/40 text-xs mb-1">Total de Pontos</p>
+                <p className="text-2xl font-bold text-indigo-300">
+                  {parseFloat(etherealPoints.totalPoints).toLocaleString("pt-BR", {
+                    maximumFractionDigits: 0,
+                  })}
+                </p>
+              </div>
+              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                <p className="text-white/40 text-xs mb-1">Rank Global</p>
+                <p className="text-2xl font-bold">#{etherealPoints.rank.toLocaleString("pt-BR")}</p>
+              </div>
+              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                <p className="text-white/40 text-xs mb-1">Tier</p>
+                <p className="text-2xl font-bold">Tier {etherealPoints.tier}</p>
+              </div>
             </div>
+          ) : project.wallet_address ? (
+            <div className="mb-4 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-yellow-400 text-sm">
+              Não foi possível buscar pontos. Verifique o wallet address configurado.
+            </div>
+          ) : null}
+
+          {/* Posição aberta */}
+          {etherealPosition && (
+            <div className="mb-4 p-4 bg-white/5 border border-white/10 rounded-xl">
+              <p className="text-white/40 text-xs mb-3 uppercase tracking-wider font-medium">
+                Posição Aberta
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div>
+                  <span className="text-white/40">Ticker: </span>
+                  <span className="font-medium">{etherealPosition.ticker}</span>
+                </div>
+                <div>
+                  <span className="text-white/40">Lado: </span>
+                  <span
+                    className={`font-medium ${
+                      etherealPosition.side === "long" ? "text-green-400" : "text-red-400"
+                    }`}
+                  >
+                    {etherealPosition.side?.toUpperCase()}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-white/40">Entrada: </span>
+                  <span className="font-medium">
+                    ${parseFloat(etherealPosition.entryPrice).toFixed(0)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-white/40">Mark: </span>
+                  <span className="font-medium">
+                    ${parseFloat(etherealPosition.markPrice).toFixed(0)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-white/40">Qtd: </span>
+                  <span className="font-medium">{etherealPosition.quantity}</span>
+                </div>
+                <div>
+                  <span className="text-white/40">Alavancagem: </span>
+                  <span className="font-medium">{etherealPosition.leverage}x</span>
+                </div>
+                <div>
+                  <span className="text-white/40">PnL não realizado: </span>
+                  <span
+                    className={`font-medium ${
+                      parseFloat(etherealPosition.unrealizedPnl) >= 0
+                        ? "text-green-400"
+                        : "text-red-400"
+                    }`}
+                  >
+                    {parseFloat(etherealPosition.unrealizedPnl) >= 0 ? "+" : ""}$
+                    {parseFloat(etherealPosition.unrealizedPnl).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Fills da exchange */}
+          {etherealFills.length > 0 && (
             <div>
-              <span className="text-white/40">Lado: </span>
-              <span
-                className={`font-medium ${
-                  latestSnapshot.side === "long"
-                    ? "text-green-400"
-                    : latestSnapshot.side === "short"
-                    ? "text-red-400"
-                    : ""
+              <p className="text-white/40 text-xs mb-3 uppercase tracking-wider font-medium">
+                Últimos Trades (via Ethereal)
+              </p>
+              <div className="border border-white/10 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-white/10 bg-white/5">
+                      <th className="px-4 py-3 text-left text-white/40 font-normal">Lado</th>
+                      <th className="px-4 py-3 text-left text-white/40 font-normal">Ticker</th>
+                      <th className="px-4 py-3 text-right text-white/40 font-normal">Preço</th>
+                      <th className="px-4 py-3 text-right text-white/40 font-normal">Qtd</th>
+                      <th className="px-4 py-3 text-right text-white/40 font-normal">PnL</th>
+                      <th className="px-4 py-3 text-right text-white/40 font-normal">Fee</th>
+                      <th className="px-4 py-3 text-right text-white/40 font-normal">Data</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {etherealFills.slice(0, 50).map((fill, i) => {
+                      const pnl = fill.realizedPnl ? parseFloat(fill.realizedPnl) : null;
+                      return (
+                        <tr
+                          key={fill.orderId ?? i}
+                          className="border-b border-white/5 hover:bg-white/5 transition-colors"
+                        >
+                          <td className="px-4 py-3">
+                            <span
+                              className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                fill.side === "buy"
+                                  ? "bg-green-500/20 text-green-400"
+                                  : "bg-red-500/20 text-red-400"
+                              }`}
+                            >
+                              {fill.side?.toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-white/60 text-xs">{fill.ticker}</td>
+                          <td className="px-4 py-3 text-right text-white/70">
+                            ${parseFloat(fill.price).toFixed(0)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-white/70">
+                            {parseFloat(fill.quantity).toFixed(4)}
+                          </td>
+                          <td
+                            className={`px-4 py-3 text-right font-medium ${
+                              pnl == null
+                                ? "text-white/30"
+                                : pnl >= 0
+                                ? "text-green-400"
+                                : "text-red-400"
+                            }`}
+                          >
+                            {pnl == null
+                              ? "—"
+                              : `${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`}
+                          </td>
+                          <td className="px-4 py-3 text-right text-white/40 text-xs">
+                            ${parseFloat(fill.fee).toFixed(3)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-white/40 text-xs">
+                            {fill.createdAt
+                              ? new Date(fill.createdAt).toLocaleString("pt-BR", {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })
+                              : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {etherealFills.length === 0 && project.subaccount_id && (
+            <div className="text-center py-8 border border-dashed border-white/10 rounded-xl text-white/30 text-sm">
+              Nenhum trade encontrado para este subaccount.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Stats principais (do banco local) */}
+      {!hasEtherealConfig && (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+              <p className="text-white/40 text-xs mb-1">PnL Total</p>
+              <p
+                className={`text-xl font-bold ${
+                  totalPnl >= 0 ? "text-green-400" : "text-red-400"
                 }`}
               >
-                {latestSnapshot.side?.toUpperCase() ?? "—"}
-              </span>
+                {totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(2)}
+              </p>
             </div>
-            <div>
-              <span className="text-white/40">Trend: </span>
-              <span className="font-medium">
-                {latestSnapshot.trend === "BULLISH"
-                  ? "🟢 BULLISH"
-                  : latestSnapshot.trend === "BEARISH"
-                  ? "🔴 BEARISH"
-                  : "⚪ NEUTRAL"}
-              </span>
-            </div>
-            <div>
-              <span className="text-white/40">Funding: </span>
-              <span className="font-medium">
-                {latestSnapshot.funding_rate != null
-                  ? `${latestSnapshot.funding_rate.toFixed(4)}%`
+            <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+              <p className="text-white/40 text-xs mb-1">Saldo atual</p>
+              <p className="text-xl font-bold">
+                {latestSnapshot?.balance
+                  ? `$${latestSnapshot.balance.toFixed(2)}`
                   : "—"}
-              </span>
+              </p>
             </div>
-            <div>
-              <span className="text-white/40">Preço entrada: </span>
-              <span className="font-medium">
-                {latestSnapshot.entry_price
-                  ? `$${latestSnapshot.entry_price.toFixed(0)}`
-                  : "—"}
-              </span>
-            </div>
-            <div>
-              <span className="text-white/40">Preço atual: </span>
-              <span className="font-medium">
-                {latestSnapshot.current_price
-                  ? `$${latestSnapshot.current_price.toFixed(0)}`
-                  : "—"}
-              </span>
-            </div>
-            <div>
-              <span className="text-white/40">PnL não realizado: </span>
-              <span
-                className={`font-medium ${
-                  (latestSnapshot.unrealized_pnl ?? 0) >= 0
+            <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+              <p className="text-white/40 text-xs mb-1">Win Rate</p>
+              <p
+                className={`text-xl font-bold ${
+                  winRate >= 60
                     ? "text-green-400"
+                    : winRate >= 40
+                    ? "text-yellow-400"
                     : "text-red-400"
                 }`}
               >
-                {latestSnapshot.unrealized_pnl != null
-                  ? `${latestSnapshot.unrealized_pnl >= 0 ? "+" : ""}$${latestSnapshot.unrealized_pnl.toFixed(2)}`
-                  : "—"}
-              </span>
+                {closedTrades.length > 0 ? `${winRate.toFixed(0)}%` : "—"}
+              </p>
             </div>
-            <div>
-              <span className="text-white/40">Ticker: </span>
-              <span className="font-medium">{latestSnapshot.ticker ?? "—"}</span>
+            <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+              <p className="text-white/40 text-xs mb-1">Total Trades</p>
+              <p className="text-xl font-bold">{project._count.trades}</p>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Tabela de trades */}
-      {project.type === "TRADING" && (
-        <div className="mb-8">
-          <h2 className="font-semibold mb-4 text-sm uppercase tracking-wider text-white/60">
-            Histórico de Trades
-          </h2>
-          {project.trades.length === 0 ? (
-            <div className="text-center py-12 border border-dashed border-white/10 rounded-xl text-white/30 text-sm">
-              Nenhum trade ainda. Configure o bot para enviar dados ao Meridian.
-            </div>
-          ) : (
-            <div className="border border-white/10 rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-white/10 bg-white/5">
-                    <th className="px-4 py-3 text-left text-white/40 font-normal">
-                      Tipo
-                    </th>
-                    <th className="px-4 py-3 text-left text-white/40 font-normal">
-                      Lado
-                    </th>
-                    <th className="px-4 py-3 text-left text-white/40 font-normal">
-                      Ticker
-                    </th>
-                    <th className="px-4 py-3 text-right text-white/40 font-normal">
-                      Qty
-                    </th>
-                    <th className="px-4 py-3 text-right text-white/40 font-normal">
-                      Preço
-                    </th>
-                    <th className="px-4 py-3 text-right text-white/40 font-normal">
-                      PnL
-                    </th>
-                    <th className="px-4 py-3 text-right text-white/40 font-normal">
-                      Data
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {project.trades.map((trade) => (
-                    <tr
-                      key={trade.id}
-                      className="border-b border-white/5 hover:bg-white/5 transition-colors"
-                    >
-                      <td className="px-4 py-3">
-                        <span className="px-2 py-0.5 rounded text-xs bg-white/10 text-white/70">
-                          {trade.tx_type}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`px-2 py-0.5 rounded text-xs font-medium ${
-                            trade.side === "long"
-                              ? "bg-green-500/20 text-green-400"
-                              : "bg-red-500/20 text-red-400"
-                          }`}
-                        >
-                          {trade.side.toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-white/60 text-xs">
-                        {trade.ticker}
-                      </td>
-                      <td className="px-4 py-3 text-right text-white/70">
-                        {trade.quantity.toFixed(4)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-white/70">
-                        ${trade.price.toFixed(0)}
-                      </td>
-                      <td
-                        className={`px-4 py-3 text-right font-medium ${
-                          trade.pnl == null
-                            ? "text-white/30"
-                            : trade.pnl >= 0
-                            ? "text-green-400"
-                            : "text-red-400"
-                        }`}
-                      >
-                        {trade.pnl == null
-                          ? "—"
-                          : `${trade.pnl >= 0 ? "+" : ""}$${trade.pnl.toFixed(2)}`}
-                      </td>
-                      <td className="px-4 py-3 text-right text-white/40 text-xs">
-                        {new Date(trade.created_at).toLocaleString("pt-BR", {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Eventos (projetos de pontos) */}
-      {project.type !== "TRADING" && (
-        <div>
-          <h2 className="font-semibold mb-4 text-sm uppercase tracking-wider text-white/60">
-            Eventos & Pontos
-          </h2>
-          {project.events.length === 0 ? (
-            <div className="text-center py-12 border border-dashed border-white/10 rounded-xl text-white/30 text-sm">
-              Nenhum evento ainda. Envie via API ou adicione manualmente.
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {project.events.map((event) => (
-                <div
-                  key={event.id}
-                  className="flex items-center justify-between p-4 border border-white/10 rounded-xl hover:bg-white/5 transition-colors"
-                >
-                  <div>
-                    <p className="font-medium text-sm">{event.title}</p>
-                    {event.description && (
-                      <p className="text-white/40 text-xs mt-0.5">
-                        {event.description}
-                      </p>
-                    )}
-                    <p className="text-white/30 text-xs mt-1">
-                      {new Date(event.created_at).toLocaleString("pt-BR")} ·{" "}
-                      {event.event_type}
-                    </p>
-                  </div>
-                  {event.value != null && (
-                    <span className="text-yellow-400 font-semibold text-sm">
-                      +{event.value}
-                    </span>
-                  )}
+          {/* Último snapshot (trading) */}
+          {latestSnapshot && project.type === "TRADING" && (
+            <div className="mb-8 p-4 bg-white/5 border border-white/10 rounded-xl">
+              <p className="text-white/40 text-xs mb-3 uppercase tracking-wider font-medium">
+                Último snapshot do bot
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div>
+                  <span className="text-white/40">Estado: </span>
+                  <span className="font-medium">{latestSnapshot.state ?? "—"}</span>
                 </div>
-              ))}
+                <div>
+                  <span className="text-white/40">Lado: </span>
+                  <span
+                    className={`font-medium ${
+                      latestSnapshot.side === "long"
+                        ? "text-green-400"
+                        : latestSnapshot.side === "short"
+                        ? "text-red-400"
+                        : ""
+                    }`}
+                  >
+                    {latestSnapshot.side?.toUpperCase() ?? "—"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-white/40">Trend: </span>
+                  <span className="font-medium">
+                    {latestSnapshot.trend === "BULLISH"
+                      ? "🟢 BULLISH"
+                      : latestSnapshot.trend === "BEARISH"
+                      ? "🔴 BEARISH"
+                      : "⚪ NEUTRAL"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-white/40">Funding: </span>
+                  <span className="font-medium">
+                    {latestSnapshot.funding_rate != null
+                      ? `${latestSnapshot.funding_rate.toFixed(4)}%`
+                      : "—"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-white/40">Preço entrada: </span>
+                  <span className="font-medium">
+                    {latestSnapshot.entry_price
+                      ? `$${latestSnapshot.entry_price.toFixed(0)}`
+                      : "—"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-white/40">Preço atual: </span>
+                  <span className="font-medium">
+                    {latestSnapshot.current_price
+                      ? `$${latestSnapshot.current_price.toFixed(0)}`
+                      : "—"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-white/40">PnL não realizado: </span>
+                  <span
+                    className={`font-medium ${
+                      (latestSnapshot.unrealized_pnl ?? 0) >= 0
+                        ? "text-green-400"
+                        : "text-red-400"
+                    }`}
+                  >
+                    {latestSnapshot.unrealized_pnl != null
+                      ? `${latestSnapshot.unrealized_pnl >= 0 ? "+" : ""}$${latestSnapshot.unrealized_pnl.toFixed(2)}`
+                      : "—"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-white/40">Ticker: </span>
+                  <span className="font-medium">{latestSnapshot.ticker ?? "—"}</span>
+                </div>
+              </div>
             </div>
           )}
-        </div>
+
+          {/* Tabela de trades (banco local) */}
+          {project.type === "TRADING" && (
+            <div className="mb-8">
+              <h2 className="font-semibold mb-4 text-sm uppercase tracking-wider text-white/60">
+                Histórico de Trades
+              </h2>
+              {project.trades.length === 0 ? (
+                <div className="text-center py-12 border border-dashed border-white/10 rounded-xl text-white/30 text-sm">
+                  Configure wallet_address e subaccount_id para ver dados da Ethereal automaticamente.
+                </div>
+              ) : (
+                <div className="border border-white/10 rounded-xl overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-white/10 bg-white/5">
+                        <th className="px-4 py-3 text-left text-white/40 font-normal">Tipo</th>
+                        <th className="px-4 py-3 text-left text-white/40 font-normal">Lado</th>
+                        <th className="px-4 py-3 text-left text-white/40 font-normal">Ticker</th>
+                        <th className="px-4 py-3 text-right text-white/40 font-normal">Qty</th>
+                        <th className="px-4 py-3 text-right text-white/40 font-normal">Preço</th>
+                        <th className="px-4 py-3 text-right text-white/40 font-normal">PnL</th>
+                        <th className="px-4 py-3 text-right text-white/40 font-normal">Data</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {project.trades.map((trade) => (
+                        <tr
+                          key={trade.id}
+                          className="border-b border-white/5 hover:bg-white/5 transition-colors"
+                        >
+                          <td className="px-4 py-3">
+                            <span className="px-2 py-0.5 rounded text-xs bg-white/10 text-white/70">
+                              {trade.tx_type}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                trade.side === "long"
+                                  ? "bg-green-500/20 text-green-400"
+                                  : "bg-red-500/20 text-red-400"
+                              }`}
+                            >
+                              {trade.side.toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-white/60 text-xs">{trade.ticker}</td>
+                          <td className="px-4 py-3 text-right text-white/70">
+                            {trade.quantity.toFixed(4)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-white/70">
+                            ${trade.price.toFixed(0)}
+                          </td>
+                          <td
+                            className={`px-4 py-3 text-right font-medium ${
+                              trade.pnl == null
+                                ? "text-white/30"
+                                : trade.pnl >= 0
+                                ? "text-green-400"
+                                : "text-red-400"
+                            }`}
+                          >
+                            {trade.pnl == null
+                              ? "—"
+                              : `${trade.pnl >= 0 ? "+" : ""}$${trade.pnl.toFixed(2)}`}
+                          </td>
+                          <td className="px-4 py-3 text-right text-white/40 text-xs">
+                            {new Date(trade.created_at).toLocaleString("pt-BR", {
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Eventos (projetos de pontos) */}
+          {project.type !== "TRADING" && (
+            <div>
+              <h2 className="font-semibold mb-4 text-sm uppercase tracking-wider text-white/60">
+                Eventos & Pontos
+              </h2>
+              {project.events.length === 0 ? (
+                <div className="text-center py-12 border border-dashed border-white/10 rounded-xl text-white/30 text-sm">
+                  Nenhum evento ainda. Envie via API ou adicione manualmente.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {project.events.map((event) => (
+                    <div
+                      key={event.id}
+                      className="flex items-center justify-between p-4 border border-white/10 rounded-xl hover:bg-white/5 transition-colors"
+                    >
+                      <div>
+                        <p className="font-medium text-sm">{event.title}</p>
+                        {event.description && (
+                          <p className="text-white/40 text-xs mt-0.5">{event.description}</p>
+                        )}
+                        <p className="text-white/30 text-xs mt-1">
+                          {new Date(event.created_at).toLocaleString("pt-BR")} · {event.event_type}
+                        </p>
+                      </div>
+                      {event.value != null && (
+                        <span className="text-yellow-400 font-semibold text-sm">
+                          +{event.value}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

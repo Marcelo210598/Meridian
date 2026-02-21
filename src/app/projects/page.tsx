@@ -24,6 +24,8 @@ export default function ProjectsPage() {
     name: "",
     type: "TRADING",
     color: "#6366f1",
+    wallet_address: "",
+    subaccount_id: "",
   });
   const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -51,7 +53,7 @@ export default function ProjectsPage() {
         setProjects((prev) => [data, ...prev]);
         setCreatedKey(data.api_key);
         setShowForm(false);
-        setNewProject({ name: "", type: "TRADING", color: "#6366f1" });
+        setNewProject({ name: "", type: "TRADING", color: "#6366f1", wallet_address: "", subaccount_id: "" });
       } else {
         alert(data.error);
       }
@@ -158,6 +160,37 @@ export default function ProjectsPage() {
                 }
                 className="h-9 w-20 bg-black/30 border border-white/10 rounded-lg cursor-pointer"
               />
+            </div>
+            <div className="pt-2 border-t border-white/10">
+              <p className="text-xs text-white/40 mb-3">
+                Integração Ethereal (opcional) — busca pontos e trades automaticamente
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm text-white/60 block mb-1">Wallet Address</label>
+                  <input
+                    type="text"
+                    value={newProject.wallet_address}
+                    onChange={(e) =>
+                      setNewProject((p) => ({ ...p, wallet_address: e.target.value }))
+                    }
+                    placeholder="0x857550257aee74075d955c166761a7f9d922f232"
+                    className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 transition-colors font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm text-white/60 block mb-1">Subaccount ID</label>
+                  <input
+                    type="text"
+                    value={newProject.subaccount_id}
+                    onChange={(e) =>
+                      setNewProject((p) => ({ ...p, subaccount_id: e.target.value }))
+                    }
+                    placeholder="4a408285-9cd9-4e6e-a758-3d379583de19"
+                    className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 transition-colors font-mono"
+                  />
+                </div>
+              </div>
             </div>
             <div className="flex gap-3 pt-1">
               <button

@@ -14,7 +14,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { name, type = "TRADING", color = "#6366f1" } = body;
+  const { name, type = "TRADING", color = "#6366f1", wallet_address, subaccount_id } = body;
 
   if (!name?.trim()) {
     return NextResponse.json({ error: "name é obrigatório" }, { status: 400 });
@@ -30,7 +30,15 @@ export async function POST(request: NextRequest) {
 
   try {
     const project = await prisma.project.create({
-      data: { name: name.trim(), slug, type, color, api_key },
+      data: {
+        name: name.trim(),
+        slug,
+        type,
+        color,
+        api_key,
+        wallet_address: wallet_address?.trim() || null,
+        subaccount_id: subaccount_id?.trim() || null,
+      },
     });
     return NextResponse.json(project, { status: 201 });
   } catch (error: unknown) {

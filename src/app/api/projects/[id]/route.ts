@@ -27,7 +27,7 @@ export async function PATCH(
 ) {
   const { id } = await params;
   const body = await request.json();
-  const { name, color, active } = body;
+  const { name, color, active, wallet_address, subaccount_id } = body;
 
   const project = await prisma.project.update({
     where: { id },
@@ -35,6 +35,8 @@ export async function PATCH(
       ...(name && { name }),
       ...(color && { color }),
       ...(active !== undefined && { active }),
+      ...(wallet_address !== undefined && { wallet_address: wallet_address?.trim() || null }),
+      ...(subaccount_id !== undefined && { subaccount_id: subaccount_id?.trim() || null }),
     },
   });
   return NextResponse.json(project);

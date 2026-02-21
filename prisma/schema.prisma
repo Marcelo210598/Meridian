@@ -20,9 +20,11 @@ model Project {
   slug       String      @unique
   type       ProjectType @default(TRADING)
   color      String      @default("#6366f1")
-  logo_url   String?
-  api_key    String      @unique
-  active     Boolean     @default(true)
+  logo_url      String?
+  api_key       String      @unique
+  wallet_address String?
+  subaccount_id  String?
+  active        Boolean     @default(true)
   created_at DateTime    @default(now())
   updated_at DateTime    @updatedAt
 
